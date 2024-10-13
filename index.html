@@ -1,0 +1,232 @@
+# Modifying the HTML to ensure that when the ball touches the top wall, it attaches and stays at the boundary,
+# and the next ball can be fired right after.
+html_content_with_wall_attachment = """
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>버블 슈터 게임</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        #gameCanvas {
+            border: 1px solid black;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #congratsMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: bold;
+            text-align: center;
+            background-color: gold;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="score">점수: 0</div>
+    <div id="congratsMessage">Congratulations, you're the god of bubbles!</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const congratsMessage = document.getElementById('congratsMessage');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const colors = ['red', 'blue', 'green', 'yellow', 'purple'];
+        let score = 0;
+        let bubbles = [];
+        let shooterBubble = null;
+        let shooter = {
+            x: canvas.width / 2,
+            y: canvas.height - 30,
+            radius: 15
+        };
+
+        function getRandomColor() {
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        function createBubble(x, y, color) {
+            return {
+                x: x,
+                y: y,
+                color: color,
+                radius: 20,
+                speed: 0,
+                dx: 0,
+                dy: 0
+            };
+        }
+
+        function drawBubble(bubble) {
+            ctx.beginPath();
+            ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
+            ctx.fillStyle = bubble.color;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function drawShooter() {
+            ctx.beginPath();
+            ctx.arc(shooter.x, shooter.y, shooter.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'gray';
+            ctx.fill();
+            ctx.closePath();
+
+            if (shooterBubble) {
+                drawBubble(shooterBubble);
+            }
+        }
+
+        function initializeBubbles() {
+            const rows = 5;
+            const cols = 10;
+            const bubbleWidth = canvas.width / cols;
+            const bubbleHeight = 40;
+
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    bubbles.push(createBubble(
+                        j * bubbleWidth + bubbleWidth / 2,
+                        i * bubbleHeight + bubbleHeight / 2,
+                        getRandomColor()
+                    ));
+                }
+            }
+        }
+
+        function shoot() {
+            if (shooterBubble && shooterBubble.speed === 0) {
+                shooterBubble.speed = 10;
+                shooterBubble.dy = -shooterBubble.speed;
+                shooterBubble.dx = 0;
+            }
+        }
+
+        function update() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            bubbles.forEach((bubble, index) => {
+                bubble.y += bubble.speed;
+                drawBubble(bubble);
+
+                if (bubble.y - bubble.radius > canvas.height) {
+                    bubbles.splice(index, 1);
+                }
+            });
+
+            if (shooterBubble) {
+                shooterBubble.x += shooterBubble.dx;
+                shooterBubble.y += shooterBubble.dy;
+                drawBubble(shooterBubble);
+
+                // 좌우 벽 반사 처리
+                if (shooterBubble.x - shooterBubble.radius <= 0 || 
+                    shooterBubble.x + shooterBubble.radius >= canvas.width) {
+                    shooterBubble.dx = -shooterBubble.dx;
+                    shooterBubble.x = Math.max(shooterBubble.radius, Math.min(canvas.width - shooterBubble.radius, shooterBubble.x));
+                }
+
+                // 상단 벽에 닿으면 반사 없이 멈추고 새 공 발사
+                if (shooterBubble.y - shooterBubble.radius <= 0) {
+                    shooterBubble.y = shooterBubble.radius;  // 상단 벽에 공을 고정
+                    bubbles.push(shooterBubble);  // 현재 공을 버블 배열에 추가
+                    shooterBubble = createBubble(shooter.x, shooter.y - shooter.radius, getRandomColor());  // 새로운 공 생성
+                    shooterBubble.speed = 0;  // 새 공은 발사 대기 상태
+                    shooterBubble.dx = 0;
+                    shooterBubble.dy = 0;
+                }
+
+                let collision = false;
+                for (let i = bubbles.length - 1; i >= 0; i--) {
+                    const bubble = bubbles[i];
+                    const dx = shooterBubble.x - bubble.x;
+                    const dy = shooterBubble.y - bubble.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < shooterBubble.radius + bubble.radius) {
+                        if (shooterBubble.color === bubble.color) {
+                            bubbles.splice(i, 1);
+                            shooterBubble = null;
+                            score += 2;
+                            scoreElement.textContent = `점수: ${score}`;
+                        } else {
+                            shooterBubble.speed = 0;
+                            shooterBubble.dx = 0;
+                            shooterBubble.dy = 0;
+                            const angle = Math.atan2(dy, dx);
+                            shooterBubble.x = bubble.x + Math.cos(angle) * (bubble.radius + shooterBubble.radius);
+                            shooterBubble.y = bubble.y + Math.sin(angle) * (bubble.radius + shooterBubble.radius);
+                            bubbles.push(shooterBubble);
+                            shooterBubble = null;
+                        }
+                        collision = true;
+                        break;
+                    }
+                }
+
+                if (collision) {
+                    shooterBubble = null;
+                }
+            }
+
+            drawShooter();
+
+            if (!shooterBubble) {
+                shooterBubble = createBubble(shooter.x, shooter.y - shooter.radius, getRandomColor());
+                shooterBubble.speed = 0;
+                shooterBubble.dx = 0;
+                shooterBubble.dy = 0;
+            }
+
+            // 승리 조건 확인
+            if (bubbles.length === 0) {
+                congratsMessage.style.display = 'block';
+            } else {
+                congratsMessage.style.display = 'none';
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        canvas.addEventListener('click', shoot);
+
+        canvas.addEventListener('mousemove', (e) => {
+            shooter.x = e.clientX;
+            if (shooterBubble && shooterBubble.speed === 0) {
+                shooterBubble.x = e.clientX;
+            }
+        });
+
+        initializeBubbles();
+        update();
+    </script>
+</body>
+</html>
+"""
+
+# Save the updated content to a file
+with open("/mnt/data/wall_attached_bubble_shooter.html", "w") as file:
+    file.write(html_content_with_wall_attachment)
+
+"/mnt/data/wall_attached_bubble_shooter.html"  # Return the path to the new file
